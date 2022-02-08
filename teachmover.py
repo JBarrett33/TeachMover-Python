@@ -69,7 +69,8 @@ class TeachMover():
         for i in range(0, self.con.in_waiting):
             incomingByte = self.con.read()
             response += incomingByte.decode()
-            response = response.rstrip()
+        
+        response = response.rstrip()
         return response
 
 
