@@ -3,7 +3,7 @@
     ****************************************
 
     This software allows for the control of a TeachMover robotic arm via serial connection. 
-    Ideally, this class should be imported into other programs and used solely for control.
+    The class contained in teachmover.py can be imported into other programs and used for control.
     The bot has a total of ten built-in serial commands, 8 of which will be implemented:
 
         @STEP       Move all steppers synchronously
