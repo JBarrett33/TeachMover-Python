@@ -35,13 +35,6 @@ import serial
 import time
 import numpy as np
 
-#The result object consists of a success code and a data (where applicable)
-#It is returned by all movement functions.
-class Result:
-    def __init__(self, statusCode: int, data = None):
-        self.statusCode = statusCode
-        self.data = data
-
 
 class TeachMover:
 
@@ -57,9 +50,9 @@ class TeachMover:
                 Pairity bits:   None
                 Duplexing:      Full duplex
             '''
-            self.con = serial.Serial(portID, baudRate)
+            self.con = serial.Serial(portID, baudRate)      
 
-            #Motor 1 (Base)
+        #Motor 1 (Base)
             self.motor1 = {
                 "steps_rev":7072,
                 "steps_rad":1125,
@@ -88,13 +81,13 @@ class TeachMover:
                 "steps_rev":1536,
                 "steps_rad":241,
                 "steps_deg":4.27
-            }           
+            } 
 
         except Exception as e:
             print(e)
 
     #Private function to send a single command to the robot via serial.
-    def __sendCmd(self, cmd: str, waitTime = 0.5) -> Result:
+    def __sendCmd(self, cmd: str, waitTime = 0.5) -> str:
 
     #Send the command.
         if not cmd.endswith("\r"):
@@ -105,64 +98,87 @@ class TeachMover:
         while self.con.in_waiting == 0:
             continue
         time.sleep(waitTime)
-        statusCode = self.con.read(size=2).decode()
-        if self.con.in_waiting > 2:
-            temp = ""
-            data = []
-            for i in range(0, self.con.in_waiting):
-                incomingByte = self.con.read()
-                temp += incomingByte.decode()
-            temp = temp.replace("\r", "")
-            temp = temp.split(",")
-            for i in temp:
-                data.append(float(i))
-        else:
-            data = None
 
-        return Result(statusCode, data)
+        tmp = ""
 
-#Tier 1 Functions (Basics)
+        for i in range(0, self.con.in_waiting):
+            tmp += self.con.read().decode()
+        tmp = tmp.replace(" ", ",")
+        tmp = tmp.replace("\r", ",")
+        tmp = tmp.split(",")
+        tmp = tmp[:-1]
 
-    def setZero(self):
-        return self.__sendCmd("@RESET")
+        ret = []
 
-    def move(self, speed = 0, j1 = 0, j2 = 0, j3 = 0, j4 = 0, j5 = 0, j6 = 0):
+        for i in tmp:
+            ret.append(int(i))
 
-        return self.__sendCmd(f"@STEP {speed}, {j1}, {j2}, {j3}, {j4}, {j5}, {j6}")
-    
-    def readPosition(self) -> Result:
-        ret = self.__sendCmd("@READ")
-        #Strip the leading status code
         return ret
 
-    def closeGripper(self):
-        return self.__sendCmd("@CLOSE")
+    def setZero(self) -> int:
+        return self.__sendCmd("@RESET")[0]
 
-#Tier 2 Functions (Depend on tier 1, some not refactored yet)
+    def move(self, speed = 0, base = 0, shoulder = 0, elbow = 0, wrist1 = 0, wrist2 = 0, gripper = 0, output = -1) -> int:
+        #We're adding the elbow value to the grip movement because we assume the two should remain "locked" together.
+        #This prevents collisions and general confusion surrounding the gripper position.
+        if output == -1:
+            return self.__sendCmd(f"@STEP {speed}, {base}, {shoulder}, {elbow}, {wrist1}, {wrist2}, {gripper + elbow}")[0]
+        else:
+            return self.__sendCmd(f"@STEP {speed}, {base}, {shoulder}, {elbow}, {wrist1}, {wrist2}, {gripper + elbow}, {output}")[0]
+    
+    def moveAngle(self, speed = 0, base_deg = 0, shoulder_deg = 0, elbow_deg = 0, wrist1_deg = 0, wrist2_deg = 0):
 
-    def gripObject(self):
+        b = int(base_deg * self.motor1["steps_deg"])
+        s = int(shoulder_deg * self.motor2["steps_deg"])
+        e = int(elbow_deg * self.motor3["steps_deg"])
+        w1 = int(wrist1_deg * self.motor4["steps_deg"])
+        w2 = int(wrist2_deg * self.motor5["steps_deg"])
+
+        return self.move(speed, b, s, e, w1, w2)
+
+    def readPosition(self) -> list:
+        return self.__sendCmd("@READ")[1:-1]
+
+    def readInputs(self) -> int:
+        temp = self.__sendCmd("@READ")
+        inputByte = temp[7] % 256
+        return inputByte
+
+    def lastKey(self)->str:
+        keymap = {0:"None", 1:"Train", 2:"Pause", 3:"Grip",
+            4:"Out", 5:"Free", 6:"Move", 7:"Stop",
+            8:"Step", 9:"Point", 10:"Jump", 11:"Clear",
+            12:"Zero", 13:"Speed", 14:"Run"}
+        temp = self.__sendCmd("@READ")
+        subt = temp[7] % 256
+        lastKey = (temp[7] - subt) / 256
+        return keymap[lastKey]
+
+    def closeGripper(self) -> int:
+        return self.__sendCmd("@CLOSE")[0]
+
+    def gripObject(self) -> int:
         self.__sendCmd("@CLOSE")
-        return self.move(200, 0, 0, 0, 0, 0, -32)
+        return self.move(200, 0, 0, 0, 0, 0, -32)[0]
 
-    def returnToZero(self):
-        currentPos = self.readPosition().data
+    def returnToZero(self) -> int:
+        currentPos = self.readPosition()
 
         speed = 220
-        j1 = int(-currentPos[0])
-        j2 = int(-currentPos[1])
-        j3 = int(-currentPos[2])
-        j4 = int(-currentPos[3])
-        j5 = int(-currentPos[4])
-        j6 = int(-currentPos[5])
-        ret = self.move(speed, j1, j2, j3, j4, j5, j6)
+        base = int(-currentPos[0])
+        shoulder = int(-currentPos[1])
+        elbow = int(-currentPos[2])
+        wrist1 = int(-currentPos[3])
+        wrist2 = int(-currentPos[4])
+        ret = self.move(speed, base, shoulder, elbow, wrist1, wrist2)
         #We can execute setZero to cut current to the motors. 
         self.setZero()
         return ret
 
     #Right now this is the only function that does not return a "Result" object. 
-    def measureObject(self):
+    def measureObject(self) -> float:
         OFFSET = 3.3
-        self.closeGripper()
+        stat = self.closeGripper()
         current_width_mm = (self.readPosition().data[6] / 14.6) - OFFSET
         return current_width_mm
 
