@@ -3,7 +3,6 @@ import time
 
 winston = TeachMover("COM3", 9600)
 
-winston.moveAngle(200, 0, 30, 30)
-time.sleep(2)
-winston.returnToZero()
 
+winston.moveSteps(220, 800, 300, 500, 122, 60)
+winston.returnToZero()

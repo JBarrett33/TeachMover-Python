@@ -117,24 +117,23 @@ class TeachMover:
 
     def setZero(self) -> int:
         return self.__sendCmd("@RESET")[0]
-
-    def move(self, speed = 0, base = 0, shoulder = 0, elbow = 0, wrist1 = 0, wrist2 = 0, gripper = 0, output = -1) -> int:
-        #We're adding the elbow value to the grip movement because we assume the two should remain "locked" together.
-        #This prevents collisions and general confusion surrounding the gripper position.
+   
+    def moveSteps(self, speed = 0, base = 0, shoulder = 0, elbow = 0, pitch = 0, roll = 0, gripper = 0, output = -1):
         if output == -1:
-            return self.__sendCmd(f"@STEP {speed}, {base}, {shoulder}, {elbow}, {wrist1}, {wrist2}, {gripper + elbow}")[0]
+            return self.__sendCmd(f"@STEP {speed}, {base}, {shoulder}, {elbow}, {pitch - roll}, {pitch + roll}, {gripper + elbow}")[0]
         else:
-            return self.__sendCmd(f"@STEP {speed}, {base}, {shoulder}, {elbow}, {wrist1}, {wrist2}, {gripper + elbow}, {output}")[0]
-    
-    def moveAngle(self, speed = 0, base_deg = 0, shoulder_deg = 0, elbow_deg = 0, wrist1_deg = 0, wrist2_deg = 0):
+            return self.__sendCmd(f"@STEP {speed}, {base}, {shoulder}, {elbow}, {pitch - roll}, {pitch + roll}, {gripper + elbow}, {output}")[0]
+
+
+    def moveAngle(self, speed = 0, base_deg = 0, shoulder_deg = 0, elbow_deg = 0, pitch_deg = 0, roll_deg = 0):
 
         b = int(base_deg * self.motor1["steps_deg"])
         s = int(shoulder_deg * self.motor2["steps_deg"])
         e = int(elbow_deg * self.motor3["steps_deg"])
-        w1 = int(wrist1_deg * self.motor4["steps_deg"])
-        w2 = int(wrist2_deg * self.motor5["steps_deg"])
+        p = int(pitch_deg * self.motor4["steps_deg"])
+        r = int(roll_deg * self.motor5["steps_deg"])
 
-        return self.move(speed, b, s, e, w1, w2)
+        return self.moveSteps(speed, b, s, e, p, r)
 
     def readPosition(self) -> list:
         return self.__sendCmd("@READ")[1:-1]
@@ -158,8 +157,11 @@ class TeachMover:
         return self.__sendCmd("@CLOSE")[0]
 
     def gripObject(self) -> int:
-        self.__sendCmd("@CLOSE")
-        return self.move(200, 0, 0, 0, 0, 0, -32)[0]
+        self.closeGripper()
+        return self.__sendCmd("@STEP 220, 0, 0, 0, 0, 0, -32")
+
+    def releaseObject(self) -> int:
+        return self.__sendCmd("@STEP 220, 0, 0, 0, 0, 0, 500")
 
     def returnToZero(self) -> int:
         currentPos = self.readPosition()
@@ -170,19 +172,20 @@ class TeachMover:
         elbow = int(-currentPos[2])
         wrist1 = int(-currentPos[3])
         wrist2 = int(-currentPos[4])
-        ret = self.move(speed, base, shoulder, elbow, wrist1, wrist2)
+        grip = int(-currentPos[5])
+        ret = self.__sendCmd(f"@STEP {speed}, {base}, {shoulder}, {elbow}, {wrist1}, {wrist2}, {grip}")
         #We can execute setZero to cut current to the motors. 
         self.setZero()
         return ret
 
     #Right now this is the only function that does not return a "Result" object. 
     def measureObject(self) -> float:
-        OFFSET = 3.3
-        stat = self.closeGripper()
-        current_width_mm = (self.readPosition().data[6] / 14.6) - OFFSET
+        OFFSET = 0
+        self.closeGripper()
+        current_width_mm = (self.readPosition()[5] / 14.6) - OFFSET
         return current_width_mm
 
-    #In progress: Inverse kinematic functions
+    #Work in progress: Inverse kinematic functions
 
     def moveToCoordinates(self, x, y, z, p, r, r1):
         H = 195.0
@@ -230,4 +233,4 @@ class TeachMover:
         T5 = int(T5 * 241) - int(currentPos[4])
         T6 = T3
 
-        return self.move(220, T1, T2, T3, 0, 0, T6)
+        return self.moveSteps(220, T1, T2, T3, 0, 0, T6)
