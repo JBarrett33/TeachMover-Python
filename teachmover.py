@@ -124,7 +124,6 @@ class TeachMover:
         else:
             return self.__sendCmd(f"@STEP {speed}, {base}, {shoulder}, {elbow}, {pitch - roll}, {pitch + roll}, {gripper + elbow}, {output}")[0]
 
-
     def moveAngle(self, speed = 0, base_deg = 0, shoulder_deg = 0, elbow_deg = 0, pitch_deg = 0, roll_deg = 0):
 
         b = int(base_deg * self.motor1["steps_deg"])
@@ -178,13 +177,37 @@ class TeachMover:
         self.setZero()
         return ret
 
-    #Right now this is the only function that does not return a "Result" object. 
     def measureObject(self) -> float:
         OFFSET = 0
         self.closeGripper()
         current_width_mm = (self.readPosition()[5] / 14.6) - OFFSET
         return current_width_mm
 
+    #Simply execute the @QDUMP command and strip the status code. Processing will actually be handled elsewhere. 
+    def dumpRAM(self) -> list:
+        res = self.__sendCmd("@QDUMP", 3)[1:]
+        return res
+
+    def saveProgram(self, filePath: str):
+        data = self.dumpRAM()
+        with open(filePath, 'w+') as file:
+            counter = 1
+            for i in data:
+                if counter % 8 == 0:
+                    file.write(str(i))
+                    file.write("\r")
+                else:
+                    file.write(f"{str(i)},")
+                counter = counter + 1
+
+    def loadProgram(self, filePath: str):
+        with open(filePath, 'r') as file:
+            lineCount = 0
+            for line in file:
+                print(line)
+                if not line.isspace():
+                    self.__sendCmd(f"@QWRITE {line}")
+            
     #Work in progress: Inverse kinematic functions
 
     def moveToCoordinates(self, x, y, z, p, r, r1):
